@@ -5,6 +5,9 @@ pub type Result<T> = std::result::Result<T, CoreError>;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
+    #[error("agent exited with status {0}")]
+    ChildExit(i32),
+
     #[error("configuration error: {0}")]
     Config(String),
 

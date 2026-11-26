@@ -128,37 +128,18 @@ impl Launcher {
         })
     }
 
-    /// Finds currently running processes matching `executable` (by path or filename).
+    /// Finds processes whose executable resolves to the same path.
     pub fn find_running_instances(executable: &Path) -> Vec<RunningInstance> {
         let mut sys = System::new();
         sys.refresh_processes(ProcessesToUpdate::All, true);
 
-        let target_name = executable
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        let target_canon = executable.canonicalize().ok();
-
-        let mut matches = Vec::new();
-        for (pid, proc_) in sys.processes() {
-            let proc_exe = proc_.exe().map(|p| p.to_path_buf());
-            let path_matches = match (&target_canon, &proc_exe) {
-                (Some(tc), Some(pe)) => pe.canonicalize().ok().as_ref() == Some(tc),
-                _ => false,
-            };
-            let name_matches = !target_name.is_empty()
-                && proc_.name().to_string_lossy().to_ascii_lowercase() == target_name;
-
-            if path_matches || name_matches {
-                matches.push(RunningInstance {
-                    pid: pid.as_u32(),
-                    name: proc_.name().to_string_lossy().to_string(),
-                    exe: proc_exe,
-                });
-            }
-        }
-        matches
+        matching_processes(&sys, executable)
+            .map(|process| RunningInstance {
+                pid: process.pid().as_u32(),
+                name: process.name().to_string_lossy().into_owned(),
+                exe: process.exe().map(Path::to_path_buf),
+            })
+            .collect()
     }
 
     /// Terminates running processes matching `executable` and returns killed PIDs.
@@ -166,17 +147,10 @@ impl Launcher {
         let mut sys = System::new();
         sys.refresh_processes(ProcessesToUpdate::All, true);
 
-        let instances = Self::find_running_instances(executable);
-        let pids: Vec<u32> = instances.iter().map(|i| i.pid).collect();
-        let mut killed = Vec::new();
-        for pid_u32 in pids {
-            if let Some(proc_) = sys.process(sysinfo::Pid::from_u32(pid_u32))
-                && proc_.kill()
-            {
-                killed.push(pid_u32);
-            }
-        }
-        killed
+        matching_processes(&sys, executable)
+            .filter(|process| process.kill())
+            .map(|process| process.pid().as_u32())
+            .collect()
     }
 
     /// Executes the full launch flow (proxy check, single-instance check, process spawn).
@@ -235,6 +209,18 @@ impl Launcher {
     }
 }
 
+fn matching_processes<'a>(
+    system: &'a System,
+    executable: &Path,
+) -> impl Iterator<Item = &'a sysinfo::Process> {
+    let target = executable.canonicalize().ok();
+    system.processes().values().filter(move |process| {
+        target.as_ref().is_some_and(|path| {
+            process.exe().and_then(|exe| exe.canonicalize().ok()).as_ref() == Some(path)
+        })
+    })
+}
+
 fn apply_env(cmd: &mut Command, plan: &LaunchPlan) {
     for key in &plan.unset_vars {
         cmd.env_remove(key);
@@ -248,6 +234,35 @@ fn apply_env(cmd: &mut Command, plan: &LaunchPlan) {
 }
 
 fn spawn_detached_gui(plan: &LaunchPlan) -> Result<Option<u32>> {
+    #[cfg(target_os = "macos")]
+    if plan.working_dir.is_none()
+        && let Some(bundle) = macos_bundle_for_executable(&plan.executable)
+    {
+        // LaunchServices starts the bundle with its own macOS application identity.
+        // Wait only for open to deliver the launch request, never for the app to exit.
+        let mut cmd = Command::new("/usr/bin/open");
+        for key in &plan.unset_vars {
+            if !plan.env_vars.contains_key(key) {
+                cmd.arg("--env").arg(format!("{key}="));
+            }
+        }
+        for (key, value) in &plan.env_vars {
+            cmd.arg("--env").arg(format!("{key}={value}"));
+        }
+        cmd.arg("-n").arg(bundle).arg("--args").args(&plan.args);
+        let output = cmd.output().map_err(|source| CoreError::LaunchFailed {
+            path: plan.executable.clone(),
+            source,
+        })?;
+        if !output.status.success() {
+            return Err(CoreError::LaunchFailed {
+                path: plan.executable.clone(),
+                source: std::io::Error::other(String::from_utf8_lossy(&output.stderr).trim()),
+            });
+        }
+        return Ok(None);
+    }
+
     let mut cmd = Command::new(&plan.executable);
     cmd.args(&plan.args)
         .stdin(Stdio::null())
@@ -262,6 +277,19 @@ fn spawn_detached_gui(plan: &LaunchPlan) -> Result<Option<u32>> {
     Ok(Some(child.id()))
 }
 
+#[cfg(target_os = "macos")]
+fn macos_bundle_for_executable(executable: &Path) -> Option<PathBuf> {
+    let executable = executable.canonicalize().ok()?;
+    let bundle = executable.ancestors().nth(3)?;
+    if bundle.extension()? != "app" {
+        return None;
+    }
+    let contents = bundle.join("Contents");
+    let info = plist::Value::from_file(contents.join("Info.plist")).ok()?;
+    let name = info.as_dictionary()?.get("CFBundleExecutable")?.as_string()?;
+    (executable == contents.join("MacOS").join(name)).then(|| bundle.to_path_buf())
+}
+
 fn spawn_cli_inherit(plan: &LaunchPlan) -> Result<Option<u32>> {
     let mut cmd = build_cli_command(&plan.executable, &plan.args);
     apply_env(&mut cmd, plan);
@@ -271,7 +299,17 @@ fn spawn_cli_inherit(plan: &LaunchPlan) -> Result<Option<u32>> {
         source,
     })?;
     let pid = child.id();
-    let _ = child.wait();
+    let status = child.wait()?;
+    if !status.success() {
+        #[cfg(unix)]
+        let code = status.code().unwrap_or_else(|| {
+            use std::os::unix::process::ExitStatusExt;
+            128 + status.signal().unwrap_or_default()
+        });
+        #[cfg(not(unix))]
+        let code = status.code().unwrap_or(1);
+        return Err(CoreError::ChildExit(code));
+    }
     Ok(Some(pid))
 }
 

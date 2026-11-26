@@ -100,8 +100,19 @@ pub struct AgentConfig {
     pub terminal: TerminalKind,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppConfig {
+    #[serde(default)]
+    pub appearance: Appearance,
     #[serde(default = "default_proxy_id")]
     pub default_proxy: String,
     #[serde(default = "default_true")]
@@ -157,6 +168,7 @@ impl Default for AppConfig {
 
         Self {
             default_proxy: default_proxy_id(),
+            appearance: Appearance::System,
             check_proxy_before_launch: true,
             warn_if_already_running: true,
             proxies,
@@ -173,7 +185,17 @@ impl AppConfig {
     pub fn default_path() -> Result<PathBuf> {
         let proj = ProjectDirs::from("dev", "AgentLaunch", "AgentLaunch")
             .ok_or_else(|| CoreError::Config("cannot determine OS config directory".into()))?;
-        Ok(proj.config_dir().join("config.toml"))
+        let existing_path = proj.config_dir().join("config.toml");
+        #[cfg(target_os = "macos")]
+        {
+            let base = directories::BaseDirs::new()
+                .ok_or_else(|| CoreError::Config("cannot determine OS config directory".into()))?;
+            let path = base.config_dir().join("AgentLaunch/config.toml");
+            if path.try_exists()? || !existing_path.try_exists()? {
+                return Ok(path);
+            }
+        }
+        Ok(existing_path)
     }
 
     pub fn load_or_create_default() -> Result<(Self, PathBuf)> {

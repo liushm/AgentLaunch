@@ -1,4 +1,25 @@
-import { ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+import { ComboBox, LineEdit, Palette, ScrollView } from "std-widgets.slint";
+
+global Theme {
+    property <color> palette-background: Palette.background;
+    property <bool> dark: palette-background.red < 128;
+    out property <color> canvas: dark ? #141416 : #f6f7f9;
+    out property <color> inset: dark ? #161619 : #f1f2f5;
+    out property <color> surface: dark ? #1c1c1f : #ffffff;
+    out property <color> hover: dark ? #202024 : #eff1f4;
+    out property <color> line: dark ? #242428 : #dedfe5;
+    out property <color> selected: dark ? #28282d : #e3e5eb;
+    out property <color> outline: dark ? #32323a : #c9ccd4;
+    out property <color> text: dark ? #ececef : #191b20;
+    out property <color> secondary: dark ? #8e8e98 : #50545e;
+    out property <color> muted: dark ? #6b6b75 : #656975;
+    out property <color> positive: dark ? #34d399 : #087552;
+    out property <color> warning: dark ? #fbbf24 : #855200;
+    out property <color> warning-bg: dark ? #382e1a : #ffebc1;
+    out property <color> negative: dark ? #f87171 : #b23037;
+    out property <color> link: dark ? #60a5fa : #205fb5;
+    out property <color> primary: dark ? #e4e4e8 : #262931;
+}
 
 export struct AgentItem {
     id: string,
@@ -11,7 +32,6 @@ export struct AgentItem {
     running-count: int,
     is-electron: bool,
     status-text: string,
-    status-color: color,
     executable-path: string,
     source: string,
     cli-command: string,
@@ -32,7 +52,7 @@ export struct ProxyItem {
 
 /// Crisp vector circle dot (never depends on font glyphs).
 component StatusDot inherits Rectangle {
-    in property <color> dot-color: #34d399;
+    in property <color> dot-color: Theme.positive;
     in property <length> dot-size: 7px;
 
     width: dot-size;
@@ -44,7 +64,7 @@ component StatusDot inherits Rectangle {
 /// Crisp vector chevron icon (`dir`: 0 = right, 1 = down, 2 = up) — zero tofu `□` risk.
 component ChevronIcon inherits Rectangle {
     in property <int> dir: 0;
-    in property <color> stroke-color: #8e8e98;
+    in property <color> stroke-color: Theme.secondary;
 
     width: 10px;
     height: 10px;
@@ -101,7 +121,7 @@ component NavPill inherits Rectangle {
     height: 30px;
     min-width: 58px;
     border-radius: 6px;
-    background: active ? #28282d : (ta.has-hover ? #202024 : transparent);
+    background: active ? Theme.selected : (ta.has-hover ? Theme.hover : transparent);
     animate background { duration: 120ms; }
 
     HorizontalLayout {
@@ -111,7 +131,7 @@ component NavPill inherits Rectangle {
             text: root.label;
             font-size: 13.5px;
             font-weight: root.active ? 600 : 400;
-            color: root.active ? #ececef : #8e8e98;
+            color: root.active ? Theme.text : Theme.secondary;
             vertical-alignment: center;
             horizontal-alignment: center;
         }
@@ -130,9 +150,9 @@ component SegmentedBoolToggle inherits Rectangle {
     width: 92px;
     height: 28px;
     border-radius: 6px;
-    background: #161619;
+    background: Theme.inset;
     border-width: 1px;
-    border-color: #32323a;
+    border-color: Theme.outline;
 
     HorizontalLayout {
         padding: 2px;
@@ -140,12 +160,12 @@ component SegmentedBoolToggle inherits Rectangle {
 
         Rectangle {
             border-radius: 4px;
-            background: !root.checked ? #303038 : transparent;
+            background: !root.checked ? Theme.selected : transparent;
             animate background { duration: 120ms; }
             Text {
                 text: "关闭";
                 font-size: 12px;
-                color: !root.checked ? #ececef : #6b6b75;
+                color: !root.checked ? Theme.text : Theme.muted;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -162,12 +182,12 @@ component SegmentedBoolToggle inherits Rectangle {
 
         Rectangle {
             border-radius: 4px;
-            background: root.checked ? #303038 : transparent;
+            background: root.checked ? Theme.selected : transparent;
             animate background { duration: 120ms; }
             Text {
                 text: "开启";
                 font-size: 12px;
-                color: root.checked ? #ececef : #6b6b75;
+                color: root.checked ? Theme.text : Theme.muted;
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -193,15 +213,15 @@ component ActionPill inherits Rectangle {
     height: 30px;
     border-radius: 15px;
     background: restart-mode
-        ? (ta.has-hover ? #473a1f : #382e1a)
-        : (ta.has-hover ? #ffffff : #e4e4e8);
+        ? (ta.has-hover ? Theme.warning-bg : Theme.warning-bg)
+        : (ta.has-hover ? Theme.primary : Theme.primary);
     animate background { duration: 120ms; }
 
     Text {
         text: root.label;
         font-size: 12.5px;
         font-weight: 600;
-        color: root.restart-mode ? #fbbf24 : #141416;
+        color: root.restart-mode ? Theme.warning : Theme.canvas;
         vertical-alignment: center;
         horizontal-alignment: center;
     }
@@ -214,14 +234,14 @@ component ActionPill inherits Rectangle {
 
 component TextLink inherits Rectangle {
     in property <string> label;
-    in property <color> text-color: #8e8e98;
-    in property <color> hover-color: #ececef;
+    in property <color> text-color: Theme.secondary;
+    in property <color> hover-color: Theme.text;
     in property <int> chevron-dir: -1; // -1 = none, 0 = right, 1 = down, 2 = up
     callback clicked();
 
     height: 28px;
     border-radius: 5px;
-    background: ta.has-hover ? #242429 : transparent;
+    background: ta.has-hover ? Theme.hover : transparent;
     animate background { duration: 100ms; }
 
     HorizontalLayout {
@@ -258,7 +278,11 @@ export component AppWindow inherits Window {
     preferred-height: 580px;
     min-width: 680px;
     min-height: 440px;
-    background: #141416;
+    background: Theme.canvas;
+
+    in-out property <int> appearance-index;
+    in-out property <ColorScheme> widget-scheme <=> Palette.color-scheme;
+    callback choose-appearance(int);
 
     // Navigation & status
     in-out property <int> active-tab: 0; // 0 = Agent, 1 = 设置
@@ -303,7 +327,7 @@ export component AppWindow inherits Window {
         // === Top Navigation Bar (pixel-aligned vertically) ===
         Rectangle {
             height: 50px;
-            background: #141416;
+            background: Theme.canvas;
 
             HorizontalLayout {
                 padding-left: 20px;
@@ -329,7 +353,7 @@ export component AppWindow inherits Window {
                         text: "AgentLaunch";
                         font-size: 14.5px;
                         font-weight: 700;
-                        color: #ececef;
+                        color: Theme.text;
                         vertical-alignment: center;
                     }
 
@@ -364,13 +388,13 @@ export component AppWindow inherits Window {
                         VerticalLayout {
                             alignment: center;
                             StatusDot {
-                                dot-color: root.default-proxy-ok ? #34d399 : #f87171;
+                                dot-color: root.default-proxy-ok ? Theme.positive : Theme.negative;
                             }
                         }
                         Text {
                             text: root.default-proxy-label;
                             font-size: 12.5px;
-                            color: root.default-proxy-ok ? #34d399 : #f87171;
+                            color: root.default-proxy-ok ? Theme.positive : Theme.negative;
                             vertical-alignment: center;
                         }
                     }
@@ -389,7 +413,7 @@ export component AppWindow inherits Window {
         // Top bar hairline divider
         Rectangle {
             height: 1px;
-            background: #242428;
+            background: Theme.line;
         }
 
         // === Main Content: Agent Tab ===
@@ -404,15 +428,15 @@ export component AppWindow inherits Window {
                 Text {
                     text: "为每个 Agent 指定独立代理，启动时自动解析最新版本路径并注入参数与环境变量。";
                     font-size: 12.5px;
-                    color: #8e8e98;
+                    color: Theme.secondary;
                     wrap: word-wrap;
                 }
 
                 // Unified rounded card container (Magpie style)
                 Rectangle {
-                    background: #1c1c1f;
+                    background: Theme.surface;
                     border-width: 1px;
-                    border-color: #2a2a2f;
+                    border-color: Theme.line;
                     border-radius: 10px;
                     clip: true;
 
@@ -423,11 +447,11 @@ export component AppWindow inherits Window {
                             if item.installed || root.show-uninstalled : VerticalLayout {
                                 if idx > 0 : Rectangle {
                                     height: 1px;
-                                    background: #26262a;
+                                    background: Theme.line;
                                 }
 
                                 Rectangle {
-                                    background: row-hover.has-hover ? #212125 : transparent;
+                                    background: row-hover.has-hover ? Theme.hover : transparent;
                                     animate background { duration: 100ms; }
 
                                     row-hover := TouchArea {}
@@ -477,13 +501,13 @@ export component AppWindow inherits Window {
                                                             text: item.name;
                                                             font-size: 14px;
                                                             font-weight: 600;
-                                                            color: #ececef;
+                                                            color: Theme.text;
                                                             vertical-alignment: center;
                                                         }
                                                         if item.version != "" : Text {
                                                             text: item.version;
                                                             font-size: 11.5px;
-                                                            color: #6b6b75;
+                                                            color: Theme.muted;
                                                             vertical-alignment: center;
                                                         }
                                                     }
@@ -495,13 +519,13 @@ export component AppWindow inherits Window {
                                                             alignment: center;
                                                             StatusDot {
                                                                 dot-size: 6px;
-                                                                dot-color: item.status-color;
+                                                                dot-color: (item.installed ? (item.running-count > 0 ? Theme.warning : Theme.positive) : Theme.muted);
                                                             }
                                                         }
                                                         Text {
                                                             text: item.status-text;
                                                             font-size: 11.5px;
-                                                            color: item.status-color;
+                                                            color: (item.installed ? (item.running-count > 0 ? Theme.warning : Theme.positive) : Theme.muted);
                                                             vertical-alignment: center;
                                                         }
                                                     }
@@ -518,7 +542,7 @@ export component AppWindow inherits Window {
                                                     TextLink {
                                                         label: item.expanded ? "收起" : "详情";
                                                         chevron-dir: item.expanded ? 2 : 0;
-                                                        text-color: #8e8e98;
+                                                        text-color: Theme.secondary;
                                                         clicked => { root.toggle-agent-details(item.id); }
                                                     }
                                                 }
@@ -555,7 +579,7 @@ export component AppWindow inherits Window {
                                                         Text {
                                                             text: "未安装";
                                                             font-size: 12px;
-                                                            color: #6b6b75;
+                                                            color: Theme.muted;
                                                             vertical-alignment: center;
                                                             horizontal-alignment: center;
                                                         }
@@ -566,9 +590,9 @@ export component AppWindow inherits Window {
 
                                         // Expandable details drawer
                                         if item.expanded : Rectangle {
-                                            background: #161619;
+                                            background: Theme.inset;
                                             border-width: 1px;
-                                            border-color: #26262a;
+                                            border-color: Theme.line;
                                             border-radius: 7px;
 
                                             VerticalLayout {
@@ -578,13 +602,13 @@ export component AppWindow inherits Window {
                                                 Text {
                                                     text: "路径: " + item.executable-path;
                                                     font-size: 11.5px;
-                                                    color: #a1a1aa;
+                                                    color: Theme.secondary;
                                                     wrap: word-wrap;
                                                 }
                                                 Text {
                                                     text: "发现方式: " + item.source;
                                                     font-size: 11.5px;
-                                                    color: #6b6b75;
+                                                    color: Theme.muted;
                                                 }
 
                                                 HorizontalLayout {
@@ -592,7 +616,7 @@ export component AppWindow inherits Window {
                                                     Text {
                                                         text: "CLI: " + item.cli-command;
                                                         font-size: 11.5px;
-                                                        color: #60a5fa;
+                                                        color: Theme.link;
                                                         vertical-alignment: center;
                                                     }
 
@@ -601,9 +625,9 @@ export component AppWindow inherits Window {
                                                         Rectangle {
                                                             height: 26px;
                                                             border-radius: 5px;
-                                                            background: sc-ta.has-hover ? #2e2e36 : #24242a;
+                                                            background: sc-ta.has-hover ? Theme.selected : Theme.hover;
                                                             border-width: 1px;
-                                                            border-color: #363640;
+                                                            border-color: Theme.outline;
 
                                                             HorizontalLayout {
                                                                 padding-left: 10px;
@@ -611,7 +635,7 @@ export component AppWindow inherits Window {
                                                                 Text {
                                                                     text: "创建桌面快捷方式";
                                                                     font-size: 11.5px;
-                                                                    color: #ececef;
+                                                                    color: Theme.text;
                                                                     vertical-alignment: center;
                                                                 }
                                                             }
@@ -634,11 +658,11 @@ export component AppWindow inherits Window {
                         if root.uninstalled-count > 0 : VerticalLayout {
                             Rectangle {
                                 height: 1px;
-                                background: #26262a;
+                                background: Theme.line;
                             }
                             Rectangle {
                                 height: 38px;
-                                background: more-ta.has-hover ? #222226 : transparent;
+                                background: more-ta.has-hover ? Theme.hover : transparent;
                                 animate background { duration: 100ms; }
 
                                 HorizontalLayout {
@@ -650,7 +674,7 @@ export component AppWindow inherits Window {
                                             ? "收起未安装"
                                             : ("显示其余 " + root.uninstalled-count + " 个");
                                         font-size: 12px;
-                                        color: more-ta.has-hover ? #a1a1aa : #6b6b75;
+                                        color: more-ta.has-hover ? Theme.secondary : Theme.muted;
                                         vertical-alignment: center;
                                     }
 
@@ -658,7 +682,7 @@ export component AppWindow inherits Window {
                                         alignment: center;
                                         ChevronIcon {
                                             dir: root.show-uninstalled ? 2 : 1;
-                                            stroke-color: more-ta.has-hover ? #a1a1aa : #6b6b75;
+                                            stroke-color: more-ta.has-hover ? Theme.secondary : Theme.muted;
                                         }
                                     }
                                 }
@@ -683,17 +707,28 @@ export component AppWindow inherits Window {
                 spacing: 10px;
                 alignment: start;
 
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: space-between;
+                    Text { text: "外观"; color: Theme.text; vertical-alignment: center; }
+                    ComboBox {
+                        model: ["跟随系统", "浅色", "深色"];
+                        current-index: root.appearance-index;
+                        selected(_) => { root.choose-appearance(self.current-index); }
+                    }
+                }
+
                 // Section 1: 代理
                 Text {
                     text: "代理";
                     font-size: 12px;
-                    color: #6b6b75;
+                    color: Theme.muted;
                 }
 
                 Rectangle {
-                    background: #1c1c1f;
+                    background: Theme.surface;
                     border-width: 1px;
-                    border-color: #2a2a2f;
+                    border-color: Theme.line;
                     border-radius: 10px;
                     clip: true;
 
@@ -711,7 +746,7 @@ export component AppWindow inherits Window {
                             Text {
                                 text: "代理节点";
                                 font-size: 13.5px;
-                                color: #ececef;
+                                color: Theme.text;
                                 vertical-alignment: center;
                             }
 
@@ -728,7 +763,7 @@ export component AppWindow inherits Window {
                                     alignment: center;
                                     TextLink {
                                         label: root.show-add-proxy ? "取消" : "添加代理";
-                                        text-color: #ececef;
+                                        text-color: Theme.text;
                                         clicked => { root.show-add-proxy = !root.show-add-proxy; }
                                     }
                                 }
@@ -737,7 +772,7 @@ export component AppWindow inherits Window {
 
                         // Proxy rows
                         for p in root.proxies : VerticalLayout {
-                            Rectangle { height: 1px; background: #26262a; }
+                            Rectangle { height: 1px; background: Theme.line; }
 
                             HorizontalLayout {
                                 padding-left: 16px;
@@ -749,7 +784,7 @@ export component AppWindow inherits Window {
                                 VerticalLayout {
                                     alignment: center;
                                     StatusDot {
-                                        dot-color: p.reachable ? #34d399 : #f87171;
+                                        dot-color: p.reachable ? Theme.positive : Theme.negative;
                                     }
                                 }
 
@@ -787,7 +822,7 @@ export component AppWindow inherits Window {
                                     alignment: center;
                                     TextLink {
                                         label: "保存";
-                                        text-color: #60a5fa;
+                                        text-color: Theme.link;
                                         clicked => {
                                             root.update-proxy(p.id, p-name.text, p-url.text, p-bypass.text);
                                         }
@@ -804,7 +839,7 @@ export component AppWindow inherits Window {
                                             Text {
                                                 text: "默认";
                                                 font-size: 12px;
-                                                color: #34d399;
+                                                color: Theme.positive;
                                                 vertical-alignment: center;
                                             }
                                         }
@@ -823,8 +858,8 @@ export component AppWindow inherits Window {
                                     alignment: center;
                                     TextLink {
                                         label: "删除";
-                                        text-color: #f87171;
-                                        hover-color: #fca5a5;
+                                        text-color: Theme.negative;
+                                        hover-color: Theme.negative;
                                         clicked => { root.delete-proxy(p.id); }
                                     }
                                 }
@@ -833,9 +868,9 @@ export component AppWindow inherits Window {
 
                         // Inline add proxy row
                         if root.show-add-proxy : VerticalLayout {
-                            Rectangle { height: 1px; background: #26262a; }
+                            Rectangle { height: 1px; background: Theme.line; }
                             Rectangle {
-                                background: #161619;
+                                background: Theme.inset;
                                 HorizontalLayout {
                                     padding-left: 16px;
                                     padding-right: 16px;
@@ -883,7 +918,7 @@ export component AppWindow inherits Window {
                                         alignment: center;
                                         TextLink {
                                             label: "添加";
-                                            text-color: #34d399;
+                                            text-color: Theme.positive;
                                             clicked => {
                                                 root.add-proxy(
                                                     root.new-proxy-id,
@@ -906,13 +941,13 @@ export component AppWindow inherits Window {
                 Text {
                     text: "启动策略";
                     font-size: 12px;
-                    color: #6b6b75;
+                    color: Theme.muted;
                 }
 
                 Rectangle {
-                    background: #1c1c1f;
+                    background: Theme.surface;
                     border-width: 1px;
-                    border-color: #2a2a2f;
+                    border-color: Theme.line;
                     border-radius: 10px;
 
                     HorizontalLayout {
@@ -925,7 +960,7 @@ export component AppWindow inherits Window {
                         Text {
                             text: "启动前检测代理端口连通性";
                             font-size: 13.5px;
-                            color: #ececef;
+                            color: Theme.text;
                             vertical-alignment: center;
                         }
 
@@ -940,9 +975,9 @@ export component AppWindow inherits Window {
                 }
 
                 Rectangle {
-                    background: #1c1c1f;
+                    background: Theme.surface;
                     border-width: 1px;
-                    border-color: #2a2a2f;
+                    border-color: Theme.line;
                     border-radius: 10px;
 
                     HorizontalLayout {
@@ -955,14 +990,14 @@ export component AppWindow inherits Window {
                         Text {
                             text: "配置文件";
                             font-size: 13.5px;
-                            color: #ececef;
+                            color: Theme.text;
                             vertical-alignment: center;
                         }
 
                         Text {
                             text: root.config-path;
                             font-size: 12px;
-                            color: #8e8e98;
+                            color: Theme.secondary;
                             vertical-alignment: center;
                         }
                     }
@@ -973,9 +1008,9 @@ export component AppWindow inherits Window {
         // === Bottom Status Toast ===
         if root.toast-text != "" : Rectangle {
             height: 34px;
-            background: #1c1c1f;
+            background: Theme.surface;
             border-width: 1px;
-            border-color: #242428;
+            border-color: Theme.line;
 
             HorizontalLayout {
                 padding-left: 20px;
@@ -985,7 +1020,7 @@ export component AppWindow inherits Window {
                 Text {
                     text: root.toast-text;
                     font-size: 12px;
-                    color: root.toast-is-error ? #f87171 : #34d399;
+                    color: root.toast-is-error ? Theme.negative : Theme.positive;
                     vertical-alignment: center;
                 }
 
@@ -993,7 +1028,7 @@ export component AppWindow inherits Window {
                     alignment: center;
                     TextLink {
                         label: "关闭";
-                        text-color: #6b6b75;
+                        text-color: Theme.muted;
                         clicked => { root.toast-text = ""; }
                     }
                 }

@@ -24,6 +24,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Launch from a desktop shortcut, opening a terminal for CLI agents.
+    #[command(long_flag = "launch", hide = true)]
+    Launch {
+        agent: String,
+        #[arg(long)]
+        force_restart: bool,
+    },
     /// Scan and list all known/configured agents and their dynamically resolved paths
     Scan {
         /// Show only installed agents
@@ -82,6 +89,22 @@ fn main() -> ExitCode {
     };
 
     match cli.command {
+        Commands::Launch { agent, force_restart } => {
+            let Some(agent_cfg) = config.find_agent(&agent) else {
+                eprintln!("Agent '{agent}' not found.");
+                return ExitCode::FAILURE;
+            };
+            match Launcher::launch(&config, agent_cfg, &LaunchOptions {
+                force_restart,
+                ..Default::default()
+            }) {
+                Ok(_) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("Launch failed: {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Commands::Shortcut { agent } => {
             let Some(agent_cfg) = config.find_agent(&agent) else {
                 eprintln!("Agent '{agent}' not found. Run `al scan` to see available IDs.");
@@ -90,13 +113,8 @@ fn main() -> ExitCode {
             // Prefer sibling GUI executable (no console window flash on Windows); fallback to current exe.
             let current = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("al"));
             let sibling_gui = current.parent().and_then(|dir| {
-                for name in ["agentlaunch-slint.exe", "agentlaunch.exe", "agentlaunch-slint", "agentlaunch"] {
-                    let cand = dir.join(name);
-                    if cand.exists() {
-                        return Some(cand);
-                    }
-                }
-                None
+                let cand = dir.join(format!("agentlaunch-slint{}", std::env::consts::EXE_SUFFIX));
+                cand.is_file().then_some(cand)
             });
             let launcher_exe = sibling_gui.unwrap_or(current);
             match agentlaunch_core::create_desktop_shortcut(agent_cfg, &launcher_exe) {
@@ -235,6 +253,7 @@ fn main() -> ExitCode {
                         );
                         ExitCode::SUCCESS
                     }
+                    Err(agentlaunch_core::CoreError::ChildExit(code)) => std::process::exit(code),
                     Err(e) => {
                         eprintln!("Launch failed: {e}");
                         ExitCode::FAILURE

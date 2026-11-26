@@ -111,6 +111,19 @@ fn create_windows_lnk(
 }
 
 #[cfg(target_os = "macos")]
+fn bundle_icon(executable: &Path) -> Option<PathBuf> {
+    let bundle = executable.ancestors().find(|p| p.extension().is_some_and(|ext| ext == "app"))?;
+    let contents = bundle.join("Contents");
+    let info = plist::Value::from_file(contents.join("Info.plist")).ok()?;
+    let name = info.as_dictionary()?.get("CFBundleIconFile")?.as_string()?;
+    let mut icon = contents.join("Resources").join(Path::new(name).file_name()?);
+    if icon.extension().is_none() {
+        icon.set_extension("icns");
+    }
+    icon.is_file().then_some(icon)
+}
+
+#[cfg(target_os = "macos")]
 fn create_macos_app_shortcut(
     desktop: &Path,
     agent: &AgentConfig,
@@ -120,36 +133,30 @@ fn create_macos_app_shortcut(
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
-    let app_dir = desktop.join(format!("{} (Proxy).app", agent.name));
+    let app_dir = desktop.join(format!("{} (Proxy).app", agent.name.replace('/', "_")));
     let contents = app_dir.join("Contents");
     let macos_dir = contents.join("MacOS");
     fs::create_dir_all(&macos_dir)?;
 
-    let plist = format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>launch</string>
-    <key>CFBundleName</key>
-    <string>{name} (Proxy)</string>
-    <key>CFBundleIdentifier</key>
-    <string>dev.agentlaunch.shortcut.{id}</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-</dict>
-</plist>
-"#,
-        name = agent.name,
-        id = agent.id
-    );
-    fs::write(contents.join("Info.plist"), plist)?;
+    let mut info = plist::Dictionary::new();
+    info.insert("CFBundleExecutable".into(), "launch".into());
+    info.insert("CFBundlePackageType".into(), "APPL".into());
+    info.insert("CFBundleName".into(), format!("{} (Proxy)", agent.name).into());
+    info.insert("CFBundleIdentifier".into(), format!("dev.agentlaunch.shortcut.{}", agent.id).into());
+    if let Some(icon) = icon_source.and_then(bundle_icon) {
+        let resources = contents.join("Resources");
+        fs::create_dir_all(&resources)?;
+        fs::copy(icon, resources.join("Agent.icns"))?;
+        info.insert("CFBundleIconFile".into(), "Agent.icns".into());
+    }
+    plist::Value::Dictionary(info).to_file_xml(contents.join("Info.plist"))
+        .map_err(|e| CoreError::Config(format!("cannot write shortcut Info.plist: {e}")))?;
 
+    let quote = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
     let script = format!(
-        "#!/bin/sh\nexec \"{}\" --launch \"{}\" --force-restart\n",
-        launcher_exe.display(),
-        agent.id
+        "#!/bin/sh\nexec {} --launch {} --force-restart\n",
+        quote(&launcher_exe.to_string_lossy()),
+        quote(&agent.id)
     );
     let exec_path = macos_dir.join("launch");
     fs::write(&exec_path, script)?;

@@ -11,6 +11,9 @@ use agentlaunch_core::{
     ProxyProfile, ResolvedAgent, check_proxy_reachable, create_desktop_shortcut,
 };
 use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel};
+use agentlaunch_core::config::Appearance;
+use slint::language::ColorScheme;
+use slint::winit_030::{WinitWindowAccessor, winit::window::Theme};
 
 slint::include_modules!();
 
@@ -156,23 +159,17 @@ impl AppState {
                 })
                 .unwrap_or_else(|| effective_proxy_key.to_string());
 
-            let (status_text, status_color) = if !resolved.is_installed() {
-                ("未安装".to_string(), Color::from_rgb_u8(107, 107, 117))
+            let status_text = if !resolved.is_installed() {
+                "未安装".to_string()
             } else if running > 0 {
-                (
-                    format!("运行中 ({running}) · 代理 {effective_proxy_url}"),
-                    Color::from_rgb_u8(251, 191, 36),
-                )
+                format!("运行中 ({running}) · 代理 {effective_proxy_url}")
             } else {
                 let kind_str = match resolved.kind {
                     AgentKind::Electron => "Electron",
                     AgentKind::Cli => "CLI",
                     AgentKind::Generic => "App",
                 };
-                (
-                    format!("就绪 · {kind_str} · {effective_proxy_url}"),
-                    Color::from_rgb_u8(52, 211, 153),
-                )
+                format!("就绪 · {kind_str} · {effective_proxy_url}")
             };
 
             let (glyph, badge_bg, badge_fg) = badge_style(&resolved.id);
@@ -193,7 +190,6 @@ impl AppState {
                 running_count: running as i32,
                 is_electron: resolved.kind == AgentKind::Electron,
                 status_text: SharedString::from(status_text),
-                status_color,
                 executable_path: SharedString::from(executable_path),
                 source: SharedString::from(&resolved.source),
                 cli_command: SharedString::from(format!(
@@ -299,10 +295,26 @@ fn set_toast(ui: &AppWindow, is_error: bool, text: impl Into<SharedString>) {
     ui.set_toast_text(text.into());
 }
 
+fn apply_appearance(ui: &AppWindow, appearance: Appearance) {
+    let (index, scheme, theme) = match appearance {
+        Appearance::System => (0, ColorScheme::Unknown, None),
+        Appearance::Light => (1, ColorScheme::Light, Some(Theme::Light)),
+        Appearance::Dark => (2, ColorScheme::Dark, Some(Theme::Dark)),
+    };
+    ui.set_appearance_index(index);
+    ui.set_widget_scheme(scheme);
+    ui.window().with_winit_window(|window| window.set_theme(theme));
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     if let Some(code) = try_silent_launch() {
         std::process::exit(code);
     }
+
+    #[cfg(target_os = "macos")]
+    slint::BackendSelector::new()
+        .with_winit_window_attributes_hook(|attributes| attributes.with_transparent(false))
+        .select()?;
 
     let ui = AppWindow::new()?;
     let (state_inner, init_toast) = AppState::new();
@@ -575,5 +587,23 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    ui.run()
+    ui.show()?;
+    apply_appearance(&ui, state.borrow().config.appearance);
+    let weak = ui.as_weak();
+    ui.on_choose_appearance(move |index| {
+        let Some(ui) = weak.upgrade() else { return };
+        let mut state = state.borrow_mut();
+        let previous = state.config.appearance;
+        state.config.appearance = match index {
+            1 => Appearance::Light,
+            2 => Appearance::Dark,
+            _ => Appearance::System,
+        };
+        if let Err(error) = state.save() {
+            state.config.appearance = previous;
+            set_toast(&ui, true, error);
+        }
+        apply_appearance(&ui, state.config.appearance);
+    });
+    slint::run_event_loop()
 }

@@ -17,6 +17,7 @@ pub fn builtin_descriptors() -> Vec<AgentDescriptor> {
             win_uninstall_keywords: &["Antigravity"],
             win_exe_name: "Antigravity.exe",
             mac_app_bundle: Some("Antigravity.app"),
+            mac_bundle_id: None,
             cli_names: &["antigravity"],
         },
         AgentDescriptor {
@@ -30,6 +31,7 @@ pub fn builtin_descriptors() -> Vec<AgentDescriptor> {
             win_uninstall_keywords: &["OpenAI Codex", "Codex"],
             win_exe_name: "ChatGPT.exe",
             mac_app_bundle: Some("Codex.app"),
+            mac_bundle_id: Some("com.openai.codex"),
             cli_names: &[],
         },
         AgentDescriptor {
@@ -43,6 +45,7 @@ pub fn builtin_descriptors() -> Vec<AgentDescriptor> {
             win_uninstall_keywords: &[],
             win_exe_name: "codex.cmd",
             mac_app_bundle: None,
+            mac_bundle_id: None,
             cli_names: &["codex"],
         },
         AgentDescriptor {
@@ -59,6 +62,7 @@ pub fn builtin_descriptors() -> Vec<AgentDescriptor> {
             win_uninstall_keywords: &["Claude"],
             win_exe_name: "Claude.exe",
             mac_app_bundle: Some("Claude.app"),
+            mac_bundle_id: None,
             cli_names: &[],
         },
         AgentDescriptor {
@@ -72,6 +76,7 @@ pub fn builtin_descriptors() -> Vec<AgentDescriptor> {
             win_uninstall_keywords: &[],
             win_exe_name: "claude.exe",
             mac_app_bundle: None,
+            mac_bundle_id: None,
             cli_names: &["claude"],
         },
         AgentDescriptor {
@@ -85,6 +90,7 @@ pub fn builtin_descriptors() -> Vec<AgentDescriptor> {
             win_uninstall_keywords: &["Cursor"],
             win_exe_name: "Cursor.exe",
             mac_app_bundle: Some("Cursor.app"),
+            mac_bundle_id: None,
             cli_names: &["cursor"],
         },
         AgentDescriptor {
@@ -98,6 +104,7 @@ pub fn builtin_descriptors() -> Vec<AgentDescriptor> {
             win_uninstall_keywords: &["Microsoft Visual Studio Code"],
             win_exe_name: "Code.exe",
             mac_app_bundle: Some("Visual Studio Code.app"),
+            mac_bundle_id: None,
             cli_names: &[],
         },
     ]

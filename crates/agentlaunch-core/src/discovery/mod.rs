@@ -49,6 +49,8 @@ pub struct AgentDescriptor {
     pub win_exe_name: &'static str,
     /// macOS `.app` bundle name (e.g. `"Antigravity.app"`).
     pub mac_app_bundle: Option<&'static str>,
+    /// macOS bundle identifier for apps whose on-disk name can vary.
+    pub mac_bundle_id: Option<&'static str>,
     /// CLI binary names to search on PATH / common bin dirs.
     pub cli_names: &'static [&'static str],
 }
