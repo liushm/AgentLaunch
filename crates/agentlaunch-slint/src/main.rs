@@ -13,7 +13,13 @@ use agentlaunch_core::{
 use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel};
 use agentlaunch_core::config::Appearance;
 use slint::language::ColorScheme;
-use slint::winit_030::{WinitWindowAccessor, winit::window::Theme};
+use slint::winit_030::{
+    EventResult, WinitWindowAccessor,
+    winit::{
+        event::WindowEvent,
+        window::{ResizeDirection, Theme},
+    },
+};
 
 slint::include_modules!();
 
@@ -225,7 +231,7 @@ impl AppState {
                     status_detail: SharedString::from(
                         check.map(|c| c.detail.as_str()).unwrap_or(""),
                     ),
-                    deletable: !is_default && key != "direct",
+                    deletable: !is_default,
                 })
             })
             .collect();
@@ -306,17 +312,48 @@ fn apply_appearance(ui: &AppWindow, appearance: Appearance) {
     ui.window().with_winit_window(|window| window.set_theme(theme));
 }
 
+fn configure_platform_window_backend() -> Result<(), slint::PlatformError> {
+    #[cfg(windows)]
+    {
+        use slint::winit_030::winit::platform::windows::{
+            CornerPreference, WindowAttributesExtWindows,
+        };
+        slint::BackendSelector::new()
+            .with_winit_window_attributes_hook(|attributes| {
+                attributes
+                    .with_undecorated_shadow(true)
+                    .with_corner_preference(CornerPreference::Round)
+            })
+            .select()?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
+        slint::BackendSelector::new()
+            .with_winit_window_attributes_hook(|attributes| {
+                attributes
+                    .with_transparent(false)
+                    .with_decorations(true)
+                    .with_titlebar_transparent(true)
+                    .with_fullsize_content_view(true)
+                    .with_title_hidden(true)
+            })
+            .select()?;
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     if let Some(code) = try_silent_launch() {
         std::process::exit(code);
     }
 
-    #[cfg(target_os = "macos")]
-    slint::BackendSelector::new()
-        .with_winit_window_attributes_hook(|attributes| attributes.with_transparent(false))
-        .select()?;
+    configure_platform_window_backend()?;
 
     let ui = AppWindow::new()?;
+    ui.set_is_macos(cfg!(target_os = "macos"));
     let (state_inner, init_toast) = AppState::new();
     let state = Rc::new(RefCell::new(state_inner));
 
@@ -524,22 +561,39 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    // add-proxy
+    // add-proxy (auto-generate ID from name if ID is omitted)
     {
         let state = state.clone();
         let ui_weak = ui.as_weak();
         ui.on_add_proxy(move |id, name, url, bypass_str| {
-            let id_str = id.trim().to_string();
-            if id_str.is_empty() {
-                if let Some(ui) = ui_weak.upgrade() {
-                    set_toast(&ui, true, "代理 ID 不能为空");
-                }
-                return;
+            let name_trimmed = name.trim().to_string();
+            let raw_id = if !id.trim().is_empty() {
+                id.trim().to_string()
+            } else {
+                name_trimmed
+                    .to_ascii_lowercase()
+                    .chars()
+                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+                    .collect::<String>()
+                    .trim_matches('-')
+                    .to_string()
+            };
+            let mut st = state.borrow_mut();
+            let mut id_str = if raw_id.is_empty() {
+                format!("proxy-{}", st.config.proxies.len() + 1)
+            } else {
+                raw_id
+            };
+            let base = id_str.clone();
+            let mut n = 2usize;
+            while st.config.proxies.contains_key(&id_str) {
+                id_str = format!("{base}-{n}");
+                n += 1;
             }
-            let name_str = if name.trim().is_empty() {
+            let name_str = if name_trimmed.is_empty() {
                 id_str.clone()
             } else {
-                name.trim().to_string()
+                name_trimmed
             };
             let bypass = bypass_str
                 .split([';', ','])
@@ -547,7 +601,6 @@ fn main() -> Result<(), slint::PlatformError> {
                 .filter(|s| !s.is_empty())
                 .collect();
 
-            let mut st = state.borrow_mut();
             st.config.proxies.insert(
                 id_str.clone(),
                 ProxyProfile {
@@ -587,8 +640,100 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
+    // Frameless merged titlebar controls
+    {
+        let weak = ui.as_weak();
+        ui.on_drag_window(move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.window().with_winit_window(|w| {
+                    let _ = w.drag_window();
+                });
+            }
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        ui.on_minimize_window(move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.window().with_winit_window(|w| w.set_minimized(true));
+            }
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        ui.on_toggle_maximize(move || {
+            if let Some(ui) = weak.upgrade() {
+                let mut next = false;
+                ui.window().with_winit_window(|w| {
+                    next = !w.is_maximized();
+                    w.set_maximized(next);
+                });
+                ui.set_is_maximized(next);
+            }
+        });
+    }
+    {
+        ui.on_close_window(move || {
+            let _ = slint::quit_event_loop();
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        ui.on_resize_window(move |dir| {
+            let Some(ui) = weak.upgrade() else { return };
+            let resize_dir = match dir {
+                0 => ResizeDirection::North,
+                1 => ResizeDirection::South,
+                2 => ResizeDirection::West,
+                3 => ResizeDirection::East,
+                4 => ResizeDirection::NorthWest,
+                5 => ResizeDirection::NorthEast,
+                6 => ResizeDirection::SouthWest,
+                _ => ResizeDirection::SouthEast,
+            };
+            ui.window().with_winit_window(|w| {
+                let _ = w.drag_resize_window(resize_dir);
+            });
+        });
+    }
+
+    // Keep maximized state synced when using OS Aero Snap / shortcuts, and apply theme once real winit window is ready
+    {
+        let weak = ui.as_weak();
+        ui.window().on_winit_window_event(move |w, ev| {
+            if matches!(ev, WindowEvent::Resized(_))
+                && let Some(ui) = weak.upgrade()
+            {
+                ui.set_is_maximized(w.is_maximized());
+            }
+            EventResult::Propagate
+        });
+    }
+
+    let initial_appearance = state.borrow().config.appearance;
+    apply_appearance(&ui, initial_appearance);
     ui.show()?;
-    apply_appearance(&ui, state.borrow().config.appearance);
+
+    // Re-apply winit theme & corner preference once the event loop creates the underlying OS window in `resumed()`
+    {
+        let weak = ui.as_weak();
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            if let Some(ui) = weak.upgrade() {
+                apply_appearance(&ui, initial_appearance);
+                #[cfg(windows)]
+                {
+                    use slint::winit_030::winit::platform::windows::{
+                        CornerPreference, WindowExtWindows,
+                    };
+                    ui.window().with_winit_window(|w| {
+                        w.set_undecorated_shadow(true);
+                        w.set_corner_preference(CornerPreference::Round);
+                    });
+                }
+            }
+        });
+    }
+
     let weak = ui.as_weak();
     ui.on_choose_appearance(move |index| {
         let Some(ui) = weak.upgrade() else { return };

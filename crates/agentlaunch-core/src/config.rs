@@ -144,22 +144,6 @@ impl Default for AppConfig {
                 bypass: default_bypass(),
             },
         );
-        proxies.insert(
-            "clash".to_string(),
-            ProxyProfile {
-                name: "Clash HTTP (7890)".to_string(),
-                url: "http://127.0.0.1:7890".to_string(),
-                bypass: default_bypass(),
-            },
-        );
-        proxies.insert(
-            "direct".to_string(),
-            ProxyProfile {
-                name: "Direct (No Proxy)".to_string(),
-                url: String::new(),
-                bypass: Vec::new(),
-            },
-        );
 
         let agents = crate::discovery::registry::builtin_descriptors()
             .into_iter()
