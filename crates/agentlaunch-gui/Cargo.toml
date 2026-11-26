@@ -1,0 +1,14 @@
+[package]
+name = "agentlaunch-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "agentlaunch"
+path = "src/main.rs"
+
+[dependencies]
+agentlaunch-core.workspace = true
+eframe.workspace = true
+egui.workspace = true

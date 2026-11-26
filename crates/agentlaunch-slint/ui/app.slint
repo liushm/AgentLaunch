@@ -1,0 +1,1003 @@
+import { ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+
+export struct AgentItem {
+    id: string,
+    name: string,
+    glyph: string,
+    badge-bg: color,
+    badge-fg: color,
+    version: string,
+    installed: bool,
+    running-count: int,
+    is-electron: bool,
+    status-text: string,
+    status-color: color,
+    executable-path: string,
+    source: string,
+    cli-command: string,
+    proxy-index: int,
+    expanded: bool,
+}
+
+export struct ProxyItem {
+    id: string,
+    name: string,
+    url: string,
+    bypass: string,
+    is-default: bool,
+    reachable: bool,
+    status-detail: string,
+    deletable: bool,
+}
+
+/// Crisp vector circle dot (never depends on font glyphs).
+component StatusDot inherits Rectangle {
+    in property <color> dot-color: #34d399;
+    in property <length> dot-size: 7px;
+
+    width: dot-size;
+    height: dot-size;
+    border-radius: dot-size / 2;
+    background: dot-color;
+}
+
+/// Crisp vector chevron icon (`dir`: 0 = right, 1 = down, 2 = up) — zero tofu `□` risk.
+component ChevronIcon inherits Rectangle {
+    in property <int> dir: 0;
+    in property <color> stroke-color: #8e8e98;
+
+    width: 10px;
+    height: 10px;
+    background: transparent;
+
+    if dir == 0 : Path {
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        stroke: root.stroke-color;
+        stroke-width: 1.4px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+        MoveTo { x: 3.5; y: 2; }
+        LineTo { x: 6.8; y: 5; }
+        LineTo { x: 3.5; y: 8; }
+    }
+
+    if dir == 1 : Path {
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        stroke: root.stroke-color;
+        stroke-width: 1.4px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+        MoveTo { x: 2; y: 3.5; }
+        LineTo { x: 5; y: 6.8; }
+        LineTo { x: 8; y: 3.5; }
+    }
+
+    if dir == 2 : Path {
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        stroke: root.stroke-color;
+        stroke-width: 1.4px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+        MoveTo { x: 2; y: 6.8; }
+        LineTo { x: 5; y: 3.5; }
+        LineTo { x: 8; y: 6.8; }
+    }
+}
+
+component NavPill inherits Rectangle {
+    in property <string> label;
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 30px;
+    min-width: 58px;
+    border-radius: 6px;
+    background: active ? #28282d : (ta.has-hover ? #202024 : transparent);
+    animate background { duration: 120ms; }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        Text {
+            text: root.label;
+            font-size: 13.5px;
+            font-weight: root.active ? 600 : 400;
+            color: root.active ? #ececef : #8e8e98;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component SegmentedBoolToggle inherits Rectangle {
+    in-out property <bool> checked: true;
+    callback toggled(bool);
+
+    width: 92px;
+    height: 28px;
+    border-radius: 6px;
+    background: #161619;
+    border-width: 1px;
+    border-color: #32323a;
+
+    HorizontalLayout {
+        padding: 2px;
+        spacing: 2px;
+
+        Rectangle {
+            border-radius: 4px;
+            background: !root.checked ? #303038 : transparent;
+            animate background { duration: 120ms; }
+            Text {
+                text: "关闭";
+                font-size: 12px;
+                color: !root.checked ? #ececef : #6b6b75;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    if (root.checked) {
+                        root.checked = false;
+                        root.toggled(false);
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            border-radius: 4px;
+            background: root.checked ? #303038 : transparent;
+            animate background { duration: 120ms; }
+            Text {
+                text: "开启";
+                font-size: 12px;
+                color: root.checked ? #ececef : #6b6b75;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    if (!root.checked) {
+                        root.checked = true;
+                        root.toggled(true);
+                    }
+                }
+            }
+        }
+    }
+}
+
+component ActionPill inherits Rectangle {
+    in property <string> label;
+    in property <bool> restart-mode: false;
+    callback clicked();
+
+    width: 66px;
+    height: 30px;
+    border-radius: 15px;
+    background: restart-mode
+        ? (ta.has-hover ? #473a1f : #382e1a)
+        : (ta.has-hover ? #ffffff : #e4e4e8);
+    animate background { duration: 120ms; }
+
+    Text {
+        text: root.label;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: root.restart-mode ? #fbbf24 : #141416;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component TextLink inherits Rectangle {
+    in property <string> label;
+    in property <color> text-color: #8e8e98;
+    in property <color> hover-color: #ececef;
+    in property <int> chevron-dir: -1; // -1 = none, 0 = right, 1 = down, 2 = up
+    callback clicked();
+
+    height: 28px;
+    border-radius: 5px;
+    background: ta.has-hover ? #242429 : transparent;
+    animate background { duration: 100ms; }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 4px;
+
+        Text {
+            text: root.label;
+            font-size: 12.5px;
+            color: ta.has-hover ? root.hover-color : root.text-color;
+            vertical-alignment: center;
+        }
+
+        if root.chevron-dir >= 0 : VerticalLayout {
+            alignment: center;
+            ChevronIcon {
+                dir: root.chevron-dir;
+                stroke-color: ta.has-hover ? root.hover-color : root.text-color;
+            }
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "AgentLaunch";
+    icon: @image-url("../../../assets/icon.png");
+    preferred-width: 860px;
+    preferred-height: 580px;
+    min-width: 680px;
+    min-height: 440px;
+    background: #141416;
+
+    // Navigation & status
+    in-out property <int> active-tab: 0; // 0 = Agent, 1 = 设置
+    in-out property <bool> show-uninstalled: false;
+    in-out property <int> uninstalled-count: 0;
+    in-out property <bool> show-add-proxy: false;
+
+    in-out property <string> default-proxy-label: "检测中...";
+    in-out property <bool> default-proxy-ok: true;
+    in-out property <bool> check-proxy-before-launch: true;
+    in-out property <string> config-path: "";
+
+    in-out property <string> toast-text: "";
+    in-out property <bool> toast-is-error: false;
+
+    // Data models
+    in-out property <[AgentItem]> agents: [];
+    in-out property <[string]> agent-proxy-choices: [];
+    in-out property <[ProxyItem]> proxies: [];
+
+    // New proxy form fields
+    in-out property <string> new-proxy-id: "";
+    in-out property <string> new-proxy-name: "";
+    in-out property <string> new-proxy-url: "http://127.0.0.1:7890";
+    in-out property <string> new-proxy-bypass: "localhost;127.0.0.1;::1";
+
+    // Callbacks into Rust core
+    callback refresh-all();
+    callback launch-agent(string, bool);
+    callback select-agent-proxy(string, int);
+    callback toggle-agent-details(string);
+    callback create-shortcut(string);
+
+    callback test-proxies();
+    callback set-default-proxy(string);
+    callback update-proxy(string, string, string, string);
+    callback delete-proxy(string);
+    callback add-proxy(string, string, string, string);
+    callback set-check-proxy-before-launch(bool);
+
+    VerticalLayout {
+        // === Top Navigation Bar (pixel-aligned vertically) ===
+        Rectangle {
+            height: 50px;
+            background: #141416;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                alignment: space-between;
+
+                // Left group: Brand logo + title + Nav pills
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    VerticalLayout {
+                        alignment: center;
+                        Image {
+                            source: @image-url("../../../assets/icon.png");
+                            width: 22px;
+                            height: 22px;
+                            image-fit: contain;
+                        }
+                    }
+
+                    Text {
+                        text: "AgentLaunch";
+                        font-size: 14.5px;
+                        font-weight: 700;
+                        color: #ececef;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle { width: 12px; }
+
+                    VerticalLayout {
+                        alignment: center;
+                        NavPill {
+                            label: "Agent";
+                            active: root.active-tab == 0;
+                            clicked => { root.active-tab = 0; }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        NavPill {
+                            label: "设置";
+                            active: root.active-tab == 1;
+                            clicked => { root.active-tab = 1; }
+                        }
+                    }
+                }
+
+                // Right group: Default proxy status + Refresh button
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+
+                    HorizontalLayout {
+                        spacing: 6px;
+                        VerticalLayout {
+                            alignment: center;
+                            StatusDot {
+                                dot-color: root.default-proxy-ok ? #34d399 : #f87171;
+                            }
+                        }
+                        Text {
+                            text: root.default-proxy-label;
+                            font-size: 12.5px;
+                            color: root.default-proxy-ok ? #34d399 : #f87171;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        TextLink {
+                            label: "刷新";
+                            clicked => { root.refresh-all(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Top bar hairline divider
+        Rectangle {
+            height: 1px;
+            background: #242428;
+        }
+
+        // === Main Content: Agent Tab ===
+        if root.active-tab == 0 : ScrollView {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+                alignment: start;
+
+                Text {
+                    text: "为每个 Agent 指定独立代理，启动时自动解析最新版本路径并注入参数与环境变量。";
+                    font-size: 12.5px;
+                    color: #8e8e98;
+                    wrap: word-wrap;
+                }
+
+                // Unified rounded card container (Magpie style)
+                Rectangle {
+                    background: #1c1c1f;
+                    border-width: 1px;
+                    border-color: #2a2a2f;
+                    border-radius: 10px;
+                    clip: true;
+
+                    VerticalLayout {
+                        spacing: 0px;
+
+                        for item[idx] in root.agents : VerticalLayout {
+                            if item.installed || root.show-uninstalled : VerticalLayout {
+                                if idx > 0 : Rectangle {
+                                    height: 1px;
+                                    background: #26262a;
+                                }
+
+                                Rectangle {
+                                    background: row-hover.has-hover ? #212125 : transparent;
+                                    animate background { duration: 100ms; }
+
+                                    row-hover := TouchArea {}
+
+                                    VerticalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        spacing: 10px;
+
+                                        HorizontalLayout {
+                                            spacing: 12px;
+                                            alignment: space-between;
+
+                                            // Left: icon badge + title & status subtitle
+                                            HorizontalLayout {
+                                                spacing: 12px;
+                                                alignment: start;
+
+                                                VerticalLayout {
+                                                    alignment: center;
+                                                    Rectangle {
+                                                        width: 34px;
+                                                        height: 34px;
+                                                        border-radius: 8px;
+                                                        background: item.badge-bg;
+                                                        Text {
+                                                            text: item.glyph;
+                                                            font-size: 13.5px;
+                                                            font-weight: 700;
+                                                            color: item.badge-fg;
+                                                            vertical-alignment: center;
+                                                            horizontal-alignment: center;
+                                                        }
+                                                    }
+                                                }
+
+                                                VerticalLayout {
+                                                    spacing: 3px;
+                                                    alignment: center;
+
+                                                    HorizontalLayout {
+                                                        spacing: 8px;
+                                                        alignment: start;
+                                                        Text {
+                                                            text: item.name;
+                                                            font-size: 14px;
+                                                            font-weight: 600;
+                                                            color: #ececef;
+                                                            vertical-alignment: center;
+                                                        }
+                                                        if item.version != "" : Text {
+                                                            text: item.version;
+                                                            font-size: 11.5px;
+                                                            color: #6b6b75;
+                                                            vertical-alignment: center;
+                                                        }
+                                                    }
+
+                                                    HorizontalLayout {
+                                                        spacing: 6px;
+                                                        alignment: start;
+                                                        VerticalLayout {
+                                                            alignment: center;
+                                                            StatusDot {
+                                                                dot-size: 6px;
+                                                                dot-color: item.status-color;
+                                                            }
+                                                        }
+                                                        Text {
+                                                            text: item.status-text;
+                                                            font-size: 11.5px;
+                                                            color: item.status-color;
+                                                            vertical-alignment: center;
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // Right: 详情 + Proxy ComboBox + Single Smart Launch/Restart Pill
+                                            HorizontalLayout {
+                                                spacing: 10px;
+                                                alignment: end;
+
+                                                VerticalLayout {
+                                                    alignment: center;
+                                                    TextLink {
+                                                        label: item.expanded ? "收起" : "详情";
+                                                        chevron-dir: item.expanded ? 2 : 0;
+                                                        text-color: #8e8e98;
+                                                        clicked => { root.toggle-agent-details(item.id); }
+                                                    }
+                                                }
+
+                                                VerticalLayout {
+                                                    alignment: center;
+                                                    ComboBox {
+                                                        width: 170px;
+                                                        height: 30px;
+                                                        model: root.agent-proxy-choices;
+                                                        current-index: item.proxy-index;
+                                                        selected(_) => {
+                                                            root.select-agent-proxy(item.id, self.current-index);
+                                                        }
+                                                    }
+                                                }
+
+                                                if item.installed : VerticalLayout {
+                                                    alignment: center;
+                                                    ActionPill {
+                                                        restart-mode: item.is-electron && item.running-count > 0;
+                                                        label: (item.is-electron && item.running-count > 0) ? "重启" : "启动";
+                                                        clicked => {
+                                                            root.launch-agent(item.id, item.is-electron && item.running-count > 0);
+                                                        }
+                                                    }
+                                                }
+
+                                                if !item.installed : VerticalLayout {
+                                                    alignment: center;
+                                                    Rectangle {
+                                                        width: 66px;
+                                                        height: 30px;
+                                                        Text {
+                                                            text: "未安装";
+                                                            font-size: 12px;
+                                                            color: #6b6b75;
+                                                            vertical-alignment: center;
+                                                            horizontal-alignment: center;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Expandable details drawer
+                                        if item.expanded : Rectangle {
+                                            background: #161619;
+                                            border-width: 1px;
+                                            border-color: #26262a;
+                                            border-radius: 7px;
+
+                                            VerticalLayout {
+                                                padding: 12px;
+                                                spacing: 6px;
+
+                                                Text {
+                                                    text: "路径: " + item.executable-path;
+                                                    font-size: 11.5px;
+                                                    color: #a1a1aa;
+                                                    wrap: word-wrap;
+                                                }
+                                                Text {
+                                                    text: "发现方式: " + item.source;
+                                                    font-size: 11.5px;
+                                                    color: #6b6b75;
+                                                }
+
+                                                HorizontalLayout {
+                                                    alignment: space-between;
+                                                    Text {
+                                                        text: "CLI: " + item.cli-command;
+                                                        font-size: 11.5px;
+                                                        color: #60a5fa;
+                                                        vertical-alignment: center;
+                                                    }
+
+                                                    if item.installed : VerticalLayout {
+                                                        alignment: center;
+                                                        Rectangle {
+                                                            height: 26px;
+                                                            border-radius: 5px;
+                                                            background: sc-ta.has-hover ? #2e2e36 : #24242a;
+                                                            border-width: 1px;
+                                                            border-color: #363640;
+
+                                                            HorizontalLayout {
+                                                                padding-left: 10px;
+                                                                padding-right: 10px;
+                                                                Text {
+                                                                    text: "创建桌面快捷方式";
+                                                                    font-size: 11.5px;
+                                                                    color: #ececef;
+                                                                    vertical-alignment: center;
+                                                                }
+                                                            }
+
+                                                            sc-ta := TouchArea {
+                                                                mouse-cursor: pointer;
+                                                                clicked => { root.create-shortcut(item.id); }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Bottom "显示其余 N 个" footer row with vector chevron
+                        if root.uninstalled-count > 0 : VerticalLayout {
+                            Rectangle {
+                                height: 1px;
+                                background: #26262a;
+                            }
+                            Rectangle {
+                                height: 38px;
+                                background: more-ta.has-hover ? #222226 : transparent;
+                                animate background { duration: 100ms; }
+
+                                HorizontalLayout {
+                                    alignment: center;
+                                    spacing: 5px;
+
+                                    Text {
+                                        text: root.show-uninstalled
+                                            ? "收起未安装"
+                                            : ("显示其余 " + root.uninstalled-count + " 个");
+                                        font-size: 12px;
+                                        color: more-ta.has-hover ? #a1a1aa : #6b6b75;
+                                        vertical-alignment: center;
+                                    }
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        ChevronIcon {
+                                            dir: root.show-uninstalled ? 2 : 1;
+                                            stroke-color: more-ta.has-hover ? #a1a1aa : #6b6b75;
+                                        }
+                                    }
+                                }
+
+                                more-ta := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.show-uninstalled = !root.show-uninstalled; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // === Settings Tab (Magpie style) ===
+        if root.active-tab == 1 : ScrollView {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 10px;
+                alignment: start;
+
+                // Section 1: 代理
+                Text {
+                    text: "代理";
+                    font-size: 12px;
+                    color: #6b6b75;
+                }
+
+                Rectangle {
+                    background: #1c1c1f;
+                    border-width: 1px;
+                    border-color: #2a2a2f;
+                    border-radius: 10px;
+                    clip: true;
+
+                    VerticalLayout {
+                        spacing: 0px;
+
+                        // Card header row
+                        HorizontalLayout {
+                            padding-left: 16px;
+                            padding-right: 16px;
+                            padding-top: 10px;
+                            padding-bottom: 10px;
+                            alignment: space-between;
+
+                            Text {
+                                text: "代理节点";
+                                font-size: 13.5px;
+                                color: #ececef;
+                                vertical-alignment: center;
+                            }
+
+                            HorizontalLayout {
+                                spacing: 6px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    TextLink {
+                                        label: "测试连通性";
+                                        clicked => { root.test-proxies(); }
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    TextLink {
+                                        label: root.show-add-proxy ? "取消" : "添加代理";
+                                        text-color: #ececef;
+                                        clicked => { root.show-add-proxy = !root.show-add-proxy; }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Proxy rows
+                        for p in root.proxies : VerticalLayout {
+                            Rectangle { height: 1px; background: #26262a; }
+
+                            HorizontalLayout {
+                                padding-left: 16px;
+                                padding-right: 16px;
+                                padding-top: 10px;
+                                padding-bottom: 10px;
+                                spacing: 8px;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    StatusDot {
+                                        dot-color: p.reachable ? #34d399 : #f87171;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    p-name := LineEdit {
+                                        width: 140px;
+                                        height: 30px;
+                                        text: p.name;
+                                        placeholder-text: "名称";
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    horizontal-stretch: 1;
+                                    p-url := LineEdit {
+                                        height: 30px;
+                                        text: p.url;
+                                        placeholder-text: "留空表示直连，如 http://127.0.0.1:8118";
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    p-bypass := LineEdit {
+                                        width: 150px;
+                                        height: 30px;
+                                        text: p.bypass;
+                                        placeholder-text: "绕过列表";
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    TextLink {
+                                        label: "保存";
+                                        text-color: #60a5fa;
+                                        clicked => {
+                                            root.update-proxy(p.id, p-name.text, p-url.text, p-bypass.text);
+                                        }
+                                    }
+                                }
+
+                                if p.is-default : VerticalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        height: 28px;
+                                        HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 8px;
+                                            Text {
+                                                text: "默认";
+                                                font-size: 12px;
+                                                color: #34d399;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if !p.is-default : VerticalLayout {
+                                    alignment: center;
+                                    TextLink {
+                                        label: "设为默认";
+                                        clicked => { root.set-default-proxy(p.id); }
+                                    }
+                                }
+
+                                if p.deletable : VerticalLayout {
+                                    alignment: center;
+                                    TextLink {
+                                        label: "删除";
+                                        text-color: #f87171;
+                                        hover-color: #fca5a5;
+                                        clicked => { root.delete-proxy(p.id); }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Inline add proxy row
+                        if root.show-add-proxy : VerticalLayout {
+                            Rectangle { height: 1px; background: #26262a; }
+                            Rectangle {
+                                background: #161619;
+                                HorizontalLayout {
+                                    padding-left: 16px;
+                                    padding-right: 16px;
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    spacing: 8px;
+
+                                    VerticalLayout {
+                                        alignment: center;
+                                        LineEdit {
+                                            width: 96px;
+                                            height: 30px;
+                                            text <=> root.new-proxy-id;
+                                            placeholder-text: "ID (v2ray)";
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        LineEdit {
+                                            width: 120px;
+                                            height: 30px;
+                                            text <=> root.new-proxy-name;
+                                            placeholder-text: "显示名称";
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        LineEdit {
+                                            height: 30px;
+                                            text <=> root.new-proxy-url;
+                                            placeholder-text: "http://127.0.0.1:7890";
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        LineEdit {
+                                            width: 140px;
+                                            height: 30px;
+                                            text <=> root.new-proxy-bypass;
+                                            placeholder-text: "绕过列表";
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        TextLink {
+                                            label: "添加";
+                                            text-color: #34d399;
+                                            clicked => {
+                                                root.add-proxy(
+                                                    root.new-proxy-id,
+                                                    root.new-proxy-name,
+                                                    root.new-proxy-url,
+                                                    root.new-proxy-bypass,
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { height: 8px; }
+
+                // Section 2: 启动策略
+                Text {
+                    text: "启动策略";
+                    font-size: 12px;
+                    color: #6b6b75;
+                }
+
+                Rectangle {
+                    background: #1c1c1f;
+                    border-width: 1px;
+                    border-color: #2a2a2f;
+                    border-radius: 10px;
+
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        padding-top: 12px;
+                        padding-bottom: 12px;
+                        alignment: space-between;
+
+                        Text {
+                            text: "启动前检测代理端口连通性";
+                            font-size: 13.5px;
+                            color: #ececef;
+                            vertical-alignment: center;
+                        }
+
+                        VerticalLayout {
+                            alignment: center;
+                            SegmentedBoolToggle {
+                                checked <=> root.check-proxy-before-launch;
+                                toggled(val) => { root.set-check-proxy-before-launch(val); }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    background: #1c1c1f;
+                    border-width: 1px;
+                    border-color: #2a2a2f;
+                    border-radius: 10px;
+
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        padding-top: 12px;
+                        padding-bottom: 12px;
+                        alignment: space-between;
+
+                        Text {
+                            text: "配置文件";
+                            font-size: 13.5px;
+                            color: #ececef;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: root.config-path;
+                            font-size: 12px;
+                            color: #8e8e98;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+
+        // === Bottom Status Toast ===
+        if root.toast-text != "" : Rectangle {
+            height: 34px;
+            background: #1c1c1f;
+            border-width: 1px;
+            border-color: #242428;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 14px;
+                alignment: space-between;
+
+                Text {
+                    text: root.toast-text;
+                    font-size: 12px;
+                    color: root.toast-is-error ? #f87171 : #34d399;
+                    vertical-alignment: center;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    TextLink {
+                        label: "关闭";
+                        text-color: #6b6b75;
+                        clicked => { root.toast-text = ""; }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,13 @@
+[package]
+name = "agentlaunch-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "al"
+path = "src/main.rs"
+
+[dependencies]
+agentlaunch-core.workspace = true
+clap.workspace = true

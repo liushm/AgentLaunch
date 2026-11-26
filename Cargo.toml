@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/agentlaunch-core",
+    "crates/agentlaunch-cli",
+    "crates/agentlaunch-gui",
+    "crates/agentlaunch-slint",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["AgentLaunch Contributors"]
+
+[workspace.dependencies]
+agentlaunch-core = { path = "crates/agentlaunch-core" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+thiserror = "2"
+directories = "6"
+which = "7"
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+tracing = "0.1"
+clap = { version = "4", features = ["derive"] }
+eframe = "0.31"
+egui = "0.31"
+
+# Optimize GUI dependencies even in dev builds so egui rendering & dragging are smooth.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "s"
