@@ -185,7 +185,15 @@ impl AppConfig {
     pub fn load_or_create_default() -> Result<(Self, PathBuf)> {
         let path = Self::default_path()?;
         if path.exists() {
-            let cfg = Self::load_from(&path)?;
+            let mut cfg = Self::load_from(&path)?;
+            let before = cfg.agents.len();
+            cfg.agents.retain(|agent| match &agent.locator {
+                Locator::Builtin(id) => crate::discovery::registry::find_descriptor(id).is_some(),
+                Locator::Path(_) => true,
+            });
+            if cfg.agents.len() != before {
+                let _ = cfg.save_to(&path);
+            }
             Ok((cfg, path))
         } else {
             let cfg = Self::default();

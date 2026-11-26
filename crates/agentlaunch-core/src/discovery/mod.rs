@@ -35,8 +35,8 @@ pub struct AgentDescriptor {
     pub id: &'static str,
     pub name: &'static str,
     pub kind: AgentKind,
-    /// Windows Appx/MSIX package name prefix (e.g. `"OpenAI.Codex"`).
-    pub win_appx_prefix: Option<&'static str>,
+    /// Windows Appx/MSIX package name prefixes (e.g. `&["OpenAI.Codex"]`).
+    pub win_appx_prefixes: &'static [&'static str],
     /// Candidate relative executable paths inside the Appx package root (checked in order).
     pub win_appx_rel_exes: &'static [&'static str],
     /// Windows Squirrel folder name under `%LOCALAPPDATA%` (e.g. `"AnthropicClaude"`).

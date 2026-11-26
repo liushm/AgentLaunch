@@ -24,10 +24,11 @@ pub fn resolve_windows(desc: &AgentDescriptor) -> ResolvedAgent {
         return not_found(desc);
     }
 
-    // 1. Appx / MSIX packages (e.g., OpenAI.Codex whose path changes on every update).
-    if let Some(prefix) = desc.win_appx_prefix
+    // 1. Appx / MSIX packages (e.g., OpenAI.Codex, AnthropicPBC.Claude whose path changes on every update).
+    if !desc.win_appx_prefixes.is_empty()
         && !desc.win_appx_rel_exes.is_empty()
-        && let Some((exe, version)) = find_appx_executable(prefix, desc.win_appx_rel_exes)
+        && let Some((exe, version)) =
+            find_appx_executable(desc.win_appx_prefixes, desc.win_appx_rel_exes)
     {
         return ResolvedAgent {
             id: desc.id.to_string(),
@@ -107,9 +108,9 @@ fn not_found(desc: &AgentDescriptor) -> ResolvedAgent {
 }
 
 /// Reads `HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages`
-/// to locate the newest installed MSIX/Appx package matching `prefix` (e.g., `OpenAI.Codex`).
+/// to locate the newest installed MSIX/Appx package matching any entry in `prefixes` (e.g., `OpenAI.Codex`, `AnthropicPBC.Claude`).
 /// This avoids spawning PowerShell and takes < 1ms.
-fn find_appx_executable(prefix: &str, rel_exes: &[&str]) -> Option<(PathBuf, Option<String>)> {
+fn find_appx_executable(prefixes: &[&str], rel_exes: &[&str]) -> Option<(PathBuf, Option<String>)> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let packages_key = hkcu
         .open_subkey(
@@ -117,18 +118,17 @@ fn find_appx_executable(prefix: &str, rel_exes: &[&str]) -> Option<(PathBuf, Opt
         )
         .ok()?;
 
-    let prefix_lower = prefix.to_ascii_lowercase();
+    let prefixes_lower: Vec<String> = prefixes.iter().map(|p| p.to_ascii_lowercase()).collect();
     let mut candidates: Vec<(Vec<u64>, Option<String>, PathBuf)> = Vec::new();
 
     for subkey_name in packages_key.enum_keys().flatten() {
         let lower = subkey_name.to_ascii_lowercase();
-        if !lower.starts_with(&prefix_lower) {
-            continue;
-        }
-        // Ensure prefix boundary (e.g. `OpenAI.Codex_` or exact match)
-        if lower.len() > prefix_lower.len()
-            && !matches!(lower.as_bytes()[prefix_lower.len()], b'_' | b'.')
-        {
+        let matched = prefixes_lower.iter().any(|prefix_lower| {
+            lower.starts_with(prefix_lower)
+                && (lower.len() == prefix_lower.len()
+                    || matches!(lower.as_bytes()[prefix_lower.len()], b'_' | b'.'))
+        });
+        if !matched {
             continue;
         }
 
