@@ -245,6 +245,54 @@ impl AppConfig {
     }
 }
 
+/// Splits a shell-like argument string into individual arguments, supporting double and single quotes.
+/// Example: `--user-data-dir="C:\My Data" --disable-gpu` -> `["--user-data-dir=C:\\My Data", "--disable-gpu"]`.
+pub fn parse_extra_args(input: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quote: Option<char> = None;
+
+    for ch in input.chars() {
+        match in_quote {
+            Some(q) if ch == q => {
+                in_quote = None;
+            }
+            Some(_) => {
+                current.push(ch);
+            }
+            None if ch == '"' || ch == '\'' => {
+                in_quote = Some(ch);
+            }
+            None if ch.is_whitespace() => {
+                if !current.is_empty() {
+                    args.push(std::mem::take(&mut current));
+                }
+            }
+            None => {
+                current.push(ch);
+            }
+        }
+    }
+    if !current.is_empty() {
+        args.push(current);
+    }
+    args
+}
+
+/// Formats a list of arguments back into a single editable string, quoting items with spaces.
+pub fn format_extra_args(args: &[String]) -> String {
+    args.iter()
+        .map(|arg| {
+            if arg.chars().any(char::is_whitespace) {
+                format!("\"{arg}\"")
+            } else {
+                arg.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,5 +306,16 @@ mod tests {
         assert!(parsed.proxies.contains_key("local-http"));
         assert!(parsed.find_agent("codex").is_some());
         assert!(parsed.find_agent("antigravity").is_some());
+    }
+
+    #[test]
+    fn parses_and_formats_extra_args_with_quotes() {
+        let parsed = parse_extra_args(r#"--disable-gpu --user-data-dir="C:\My Data" '--flag=a b'"#);
+        assert_eq!(
+            parsed,
+            vec!["--disable-gpu", r"--user-data-dir=C:\My Data", "--flag=a b"]
+        );
+        let formatted = format_extra_args(&parsed);
+        assert_eq!(parse_extra_args(&formatted), parsed);
     }
 }

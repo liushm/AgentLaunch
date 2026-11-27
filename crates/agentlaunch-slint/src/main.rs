@@ -11,7 +11,7 @@ use agentlaunch_core::{
     ProxyProfile, ResolvedAgent, check_proxy_reachable, create_desktop_shortcut,
 };
 use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel};
-use agentlaunch_core::config::Appearance;
+use agentlaunch_core::config::{Appearance, format_extra_args, parse_extra_args};
 use slint::language::ColorScheme;
 use slint::winit_030::{
     EventResult, WinitWindowAccessor,
@@ -202,6 +202,7 @@ impl AppState {
                     "al run {} --proxy {}",
                     resolved.id, effective_proxy_key
                 )),
+                extra_args: SharedString::from(format_extra_args(&agent_cfg.extra_args)),
                 proxy_index,
                 expanded: self.expanded_ids.contains(&resolved.id),
             });
@@ -329,16 +330,8 @@ fn configure_platform_window_backend() -> Result<(), slint::PlatformError> {
 
     #[cfg(target_os = "macos")]
     {
-        use slint::winit_030::winit::platform::macos::WindowAttributesExtMacOS;
         slint::BackendSelector::new()
-            .with_winit_window_attributes_hook(|attributes| {
-                attributes
-                    .with_transparent(false)
-                    .with_decorations(true)
-                    .with_titlebar_transparent(true)
-                    .with_fullsize_content_view(true)
-                    .with_title_hidden(true)
-            })
+            .with_winit_window_attributes_hook(|attributes| attributes.with_transparent(false))
             .select()?;
     }
 
@@ -454,6 +447,33 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             if let Some(ui) = ui_weak.upgrade() {
                 st.sync_to_ui(&ui);
+            }
+        });
+    }
+
+    // update-agent-extra-args
+    {
+        let state = state.clone();
+        let ui_weak = ui.as_weak();
+        ui.on_update_agent_extra_args(move |agent_id, args_str| {
+            let parsed = parse_extra_args(args_str.as_str());
+            let mut st = state.borrow_mut();
+            let mut agent_name = agent_id.to_string();
+            if let Some(agent) = st.config.find_agent_mut(agent_id.as_str()) {
+                agent_name = agent.name.clone();
+                agent.extra_args = parsed;
+            }
+            let save_res = st.save();
+            if let Some(ui) = ui_weak.upgrade() {
+                st.sync_to_ui(&ui);
+                match save_res {
+                    Ok(()) => set_toast(
+                        &ui,
+                        false,
+                        format!("已保存 {agent_name} 的附加参数（启动及桌面快捷方式均会自动生效）"),
+                    ),
+                    Err(e) => set_toast(&ui, true, e),
+                }
             }
         });
     }
@@ -640,11 +660,23 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    // Frameless merged titlebar controls
+    // Frameless merged titlebar controls (Windows)
     {
         let weak = ui.as_weak();
         ui.on_drag_window(move || {
             if let Some(ui) = weak.upgrade() {
+                if ui.window().is_maximized() {
+                    ui.window().set_maximized(false);
+                    ui.set_is_maximized(false);
+                    #[cfg(windows)]
+                    {
+                        use slint::winit_030::winit::platform::windows::{
+                            CornerPreference, WindowExtWindows,
+                        };
+                        ui.window()
+                            .with_winit_window(|w| w.set_corner_preference(CornerPreference::Round));
+                    }
+                }
                 ui.window().with_winit_window(|w| {
                     let _ = w.drag_window();
                 });
@@ -655,7 +687,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let weak = ui.as_weak();
         ui.on_minimize_window(move || {
             if let Some(ui) = weak.upgrade() {
-                ui.window().with_winit_window(|w| w.set_minimized(true));
+                ui.window().set_minimized(true);
             }
         });
     }
@@ -663,12 +695,22 @@ fn main() -> Result<(), slint::PlatformError> {
         let weak = ui.as_weak();
         ui.on_toggle_maximize(move || {
             if let Some(ui) = weak.upgrade() {
-                let mut next = false;
-                ui.window().with_winit_window(|w| {
-                    next = !w.is_maximized();
-                    w.set_maximized(next);
-                });
+                let next = !ui.window().is_maximized();
+                ui.window().set_maximized(next);
                 ui.set_is_maximized(next);
+                #[cfg(windows)]
+                {
+                    use slint::winit_030::winit::platform::windows::{
+                        CornerPreference, WindowExtWindows,
+                    };
+                    let pref = if next {
+                        CornerPreference::DoNotRound
+                    } else {
+                        CornerPreference::Round
+                    };
+                    ui.window()
+                        .with_winit_window(|w| w.set_corner_preference(pref));
+                }
             }
         });
     }
@@ -697,14 +739,30 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    // Keep maximized state synced when using OS Aero Snap / shortcuts, and apply theme once real winit window is ready
+    // Keep maximized state & corner preference synced when using OS Aero Snap / shortcuts
     {
         let weak = ui.as_weak();
         ui.window().on_winit_window_event(move |w, ev| {
             if matches!(ev, WindowEvent::Resized(_))
                 && let Some(ui) = weak.upgrade()
             {
-                ui.set_is_maximized(w.is_maximized());
+                let max = w.is_maximized();
+                if ui.get_is_maximized() != max {
+                    ui.set_is_maximized(max);
+                    #[cfg(windows)]
+                    {
+                        use slint::winit_030::winit::platform::windows::{
+                            CornerPreference, WindowExtWindows,
+                        };
+                        w.with_winit_window(|win| {
+                            win.set_corner_preference(if max {
+                                CornerPreference::DoNotRound
+                            } else {
+                                CornerPreference::Round
+                            });
+                        });
+                    }
+                }
             }
             EventResult::Propagate
         });

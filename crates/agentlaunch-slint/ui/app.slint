@@ -54,6 +54,7 @@ export struct AgentItem {
     executable-path: string,
     source: string,
     cli-command: string,
+    extra-args: string,
     proxy-index: int,
     expanded: bool,
 }
@@ -160,7 +161,7 @@ component CaptionButton inherits Rectangle {
         LineTo { x: 9; y: 5; }
     }
 
-    if kind == 1 : Path {
+    if kind == 1 && !root.is-maximized : Path {
         x: (parent.width - 10px) / 2;
         y: (parent.height - 10px) / 2;
         width: 10px;
@@ -175,6 +176,28 @@ component CaptionButton inherits Rectangle {
         LineTo { x: 8.5; y: 8.5; }
         LineTo { x: 1.5; y: 8.5; }
         Close {}
+    }
+
+    if kind == 1 && root.is-maximized : Path {
+        x: (parent.width - 10px) / 2;
+        y: (parent.height - 10px) / 2;
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        stroke: root.icon-color;
+        stroke-width: 1.2px;
+        stroke-line-join: round;
+        MoveTo { x: 1.2; y: 3.0; }
+        LineTo { x: 7.0; y: 3.0; }
+        LineTo { x: 7.0; y: 8.8; }
+        LineTo { x: 1.2; y: 8.8; }
+        Close {}
+        MoveTo { x: 3.0; y: 3.0; }
+        LineTo { x: 3.0; y: 1.2; }
+        LineTo { x: 8.8; y: 1.2; }
+        LineTo { x: 8.8; y: 7.0; }
+        LineTo { x: 7.0; y: 7.0; }
     }
 
     if kind == 2 : Path {
@@ -570,6 +593,7 @@ export component AppWindow inherits Window {
     callback launch-agent(string, bool);
     callback select-agent-proxy(string, int);
     callback toggle-agent-details(string);
+    callback update-agent-extra-args(string, string);
     callback create-shortcut(string);
 
     callback test-proxies();
@@ -586,47 +610,74 @@ export component AppWindow inherits Window {
         background: Theme.canvas;
 
         // Background drag area: any empty space around the window can drag it
-        TouchArea {
+        bg-drag := TouchArea {
+            property <bool> drag-started: false;
             pointer-event(ev) => {
-                if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                if (ev.kind == PointerEventKind.down && ev.button == PointerEventButton.left) {
+                    self.drag-started = false;
+                }
+            }
+            moved => {
+                if (self.pressed && !self.drag-started
+                    && (abs(self.mouse-x - self.pressed-x) > 3px || abs(self.mouse-y - self.pressed-y) > 3px)) {
+                    self.drag-started = true;
                     root.drag-window();
                 }
             }
         }
 
         VerticalLayout {
-            // === Merged Frameless Titlebar + Navigation Bar (Magpie style) ===
+            // === Merged Frameless Titlebar + Navigation Bar (Windows) / Clean Nav Bar (macOS) ===
             Rectangle {
                 height: 46px;
                 background: Theme.canvas;
 
-                // Full-bar drag area behind interactive controls
-                TouchArea {
+                // Full-bar drag & double-click maximize area behind interactive controls
+                bar-drag := TouchArea {
+                    property <bool> drag-started: false;
                     pointer-event(ev) => {
-                        if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                        if (ev.kind == PointerEventKind.down && ev.button == PointerEventButton.left) {
+                            self.drag-started = false;
+                        }
+                    }
+                    moved => {
+                        if (self.pressed && !self.drag-started
+                            && (abs(self.mouse-x - self.pressed-x) > 3px || abs(self.mouse-y - self.pressed-y) > 3px)) {
+                            self.drag-started = true;
                             root.drag-window();
                         }
                     }
-                    double-clicked => { root.toggle-maximize(); }
+                    double-clicked => {
+                        if (!root.is-macos) {
+                            root.toggle-maximize();
+                        }
+                    }
                 }
 
                 HorizontalLayout {
-                    padding-left: root.is-macos ? 76px : 16px;
-                    padding-right: 8px;
+                    padding-left: 16px;
+                    padding-right: root.is-macos ? 16px : 8px;
                     alignment: space-between;
 
-                    // Left group: Brand logo + title + Nav pills
+                    // Left group: Brand logo (Skia-clipped crisp rounded icon) + title + Nav pills
                     HorizontalLayout {
                         spacing: 8px;
                         alignment: start;
 
                         VerticalLayout {
                             alignment: center;
-                            Image {
-                                source: @image-url("../../../assets/icon.png");
-                                width: 20px;
-                                height: 20px;
-                                image-fit: contain;
+                            Rectangle {
+                                width: 22px;
+                                height: 22px;
+                                border-radius: 5px;
+                                clip: true;
+                                Image {
+                                    source: @image-url("../../../assets/icon-logo.png");
+                                    width: 100%;
+                                    height: 100%;
+                                    image-fit: cover;
+                                    image-rendering: smooth;
+                                }
                             }
                         }
 
@@ -704,9 +755,17 @@ export component AppWindow inherits Window {
                     min-height: agent-scroll.visible-height;
                     background: transparent;
 
-                    TouchArea {
+                    agent-drag := TouchArea {
+                        property <bool> drag-started: false;
                         pointer-event(ev) => {
-                            if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                            if (ev.kind == PointerEventKind.down && ev.button == PointerEventButton.left) {
+                                self.drag-started = false;
+                            }
+                        }
+                        moved => {
+                            if (self.pressed && !self.drag-started
+                                && (abs(self.mouse-x - self.pressed-x) > 3px || abs(self.mouse-y - self.pressed-y) > 3px)) {
+                                self.drag-started = true;
                                 root.drag-window();
                             }
                         }
@@ -917,6 +976,35 @@ export component AppWindow inherits Window {
                                                     }
 
                                                     HorizontalLayout {
+                                                        spacing: 8px;
+                                                        Text {
+                                                            text: "附加参数:";
+                                                            font-size: 11.5px;
+                                                            color: Theme.secondary;
+                                                            vertical-alignment: center;
+                                                        }
+                                                        extra-args-input := LineEdit {
+                                                            horizontal-stretch: 1;
+                                                            height: 28px;
+                                                            text: item.extra-args;
+                                                            placeholder-text: "可选，如 --disable-gpu --remote-debugging-port=9222";
+                                                            accepted => {
+                                                                root.update-agent-extra-args(item.id, self.text);
+                                                            }
+                                                        }
+                                                        VerticalLayout {
+                                                            alignment: center;
+                                                            TextLink {
+                                                                label: "保存";
+                                                                text-color: Theme.link;
+                                                                clicked => {
+                                                                    root.update-agent-extra-args(item.id, extra-args-input.text);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    HorizontalLayout {
                                                         alignment: space-between;
                                                         Text {
                                                             text: "CLI: " + item.cli-command;
@@ -1012,9 +1100,17 @@ export component AppWindow inherits Window {
                     min-height: settings-scroll.visible-height;
                     background: transparent;
 
-                    TouchArea {
+                    settings-drag := TouchArea {
+                        property <bool> drag-started: false;
                         pointer-event(ev) => {
-                            if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                            if (ev.kind == PointerEventKind.down && ev.button == PointerEventButton.left) {
+                                self.drag-started = false;
+                            }
+                        }
+                        moved => {
+                            if (self.pressed && !self.drag-started
+                                && (abs(self.mouse-x - self.pressed-x) > 3px || abs(self.mouse-y - self.pressed-y) > 3px)) {
+                                self.drag-started = true;
                                 root.drag-window();
                             }
                         }
