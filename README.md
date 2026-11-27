@@ -1,10 +1,22 @@
 # AgentLaunch
 
+[![CI](https://github.com/liushm/AgentLaunch/actions/workflows/ci.yml/badge.svg)](https://github.com/liushm/AgentLaunch/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/liushm/AgentLaunch?include_prereleases)](https://github.com/liushm/AgentLaunch/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+
 给不想开全局 TUN 的人准备的轻量级 AI Agent 代理启动器。
 
 不想为了跑 Codex、Claude、Antigravity 就把整台电脑的流量全劫持进 TUN 网卡？用 **AgentLaunch** 给每个 Agent 单独指定代理端口，互不干扰，支持 Windows 与 macOS。
 
 ![AgentLaunch](./assets/preview.png)
+
+## 下载与安装
+
+前往 [GitHub Releases](https://github.com/liushm/AgentLaunch/releases/latest) 下载对应平台安装包：
+
+- **Windows (`x86_64`)**：下载 `AgentLaunch-windows-x86_64.zip` 解压后运行 `AgentLaunch.exe`（内含命令行工具 `al.exe`）。
+- **macOS (`arm64` / `x86_64`)**：下载对应架构的 `.dmg`，拖入「应用程序」即可。
+  - 若首次打开提示「已损坏」或「无法验证开发者」，在终端执行 `xattr -cr /Applications/AgentLaunch.app` 后重试。
 
 ## 原理
 

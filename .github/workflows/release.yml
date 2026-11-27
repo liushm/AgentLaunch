@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    name: Build Windows (x86_64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binaries
+        run: cargo build --release -p agentlaunch-slint -p agentlaunch-cli
+
+      - name: Package Windows zip
+        shell: pwsh
+        run: |
+          $stage = "dist/AgentLaunch-windows-x86_64"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "target/release/agentlaunch-slint.exe" "$stage/AgentLaunch.exe"
+          Copy-Item "target/release/al.exe" "$stage/al.exe"
+          Copy-Item "README.md" "$stage/README.md"
+          Copy-Item "LICENSE" "$stage/LICENSE"
+          Compress-Archive -Path "$stage/*" -DestinationPath "dist/AgentLaunch-windows-x86_64.zip" -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x86_64
+          path: dist/AgentLaunch-windows-x86_64.zip
+
+  build-macos:
+    name: Build macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+          - os: macos-15-intel
+            arch: x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build and package macOS app
+        run: |
+          sh scripts/package-macos.sh
+          cargo build --release -p agentlaunch-cli
+
+      - name: Create DMG and CLI archive
+        run: |
+          mkdir -p dist dmg-stage
+          cp -R target/release/AgentLaunch.app dmg-stage/AgentLaunch.app
+          ln -s /Applications dmg-stage/Applications
+          hdiutil create -volname "AgentLaunch" \
+            -srcfolder dmg-stage \
+            -ov -format UDZO \
+            "dist/AgentLaunch-macos-${{ matrix.arch }}.dmg"
+
+          mkdir -p cli-stage
+          cp target/release/al cli-stage/al
+          cp LICENSE cli-stage/LICENSE
+          tar -czf "dist/al-macos-${{ matrix.arch }}.tar.gz" -C cli-stage .
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-${{ matrix.arch }}
+          path: |
+            dist/AgentLaunch-macos-${{ matrix.arch }}.dmg
+            dist/al-macos-${{ matrix.arch }}.tar.gz
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ### 安装说明
+
+            - **Windows (`x86_64`)**：下载 `AgentLaunch-windows-x86_64.zip` 解压，直接运行 `AgentLaunch.exe`（命令行工具为 `al.exe`）。
+            - **macOS (`arm64` / `x86_64`)**：下载对应架构的 `.dmg`，将 `AgentLaunch.app` 拖入「应用程序」文件夹。
+              - 由于未进行 Apple 开发者公证，首次打开若提示「已损坏」或「无法验证开发者」，在终端执行：
+                ```sh
+                xattr -cr /Applications/AgentLaunch.app
+                ```
+          files: dist/*
